@@ -90,10 +90,26 @@ With the directory structure:
 
 The structure within your core file will differ depending on what semester you took EECS151 in.
 
-**Step 3.5: Please add @elamdf and @Fi50 (the course staff) to your EECS151LA repo so we can help debug if you get stuck.
+**Step 4: Tell Chipyard about your OFO submodule/Project**
+
+You've imported your core into a directory in `$chipyard/generators` now, but we need to tell Chipyard's build system that a new generator has been added!
+
+
+Open `$chipyard/build.sbt`
+
+
+Search for `ofo`, you will see that it has been commented out next to a bunch of other names you have probably seen under `$chipyard/generators` such as `saturn`, `ara`, `compressacc`. Uncomment the `ofo` block comment. This tells the special "Chipyard" generator under `$chipyard/generators/chipyard` to include OFO generator files when building.
+
+
+Another thing is at the bottom of the file, you will see a block quote that defines `ofo` as a project that exists in `generators/ofo`. Uncommenting this will tell SBT, the build system for Scala (and therefore Chisel, the RTL language that Chipyard uses) that there exists a Scala project at `generators/ofo` and to compile those Scala files when building.
+
+
+Change directory to `$chipyard/generators/chipyard/src/main/scala/config` and rename `OFOConfigs.scala.exclude` to `OFOConfigs.scala`. This Scala file provides some top level configs you can build with the top level Chipyard Makefile -- Ex: `make sim CONFIG=OFORawConfig`. We will talk about this later.
+
+**Step 4.5: Please add @jimfangx (course staff) to your EECS151LA repo so we can help debug if you get stuck. (Optional)
 You can do this from the repo page on GitHub in Settings -> Collaborators -> Add People.**
 
-**Step 4: Commit and push your changes - then [Gradescope] submit your absolute core filepath, including the machine you're working on.**
+**Step 5: Commit and push your changes - then [Gradescope] submit your absolute core filepath, including the machine you're working on.**
 
 Remember that `scratch` directories aren't shared between machines!
 
