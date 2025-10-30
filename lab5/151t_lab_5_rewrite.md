@@ -33,7 +33,7 @@ The big 3 EDA (Electronic Design Automation) companies are Cadence, Synopsys, an
 | Physical Layout (for Full Custom Analog/Digital), Analog/Mixed-Signal IC | Custom Compiler | Virtuoso | L-Edit^ | - |
 | Gate Level Power | PrimePower | Voltus | PowerPro | - |
 | DRC/LVS/Physical Verification | IC Validator | Pegasus | Calibre | Magic [Developed at Berkeley!], KLayout
-| Parasitic Extraction (PEX) & Signoff | [Synopsys Signoff](https://www.synopsys.com/implementation-and-signoff/signoff.html#products) | Certus Closure Solution | Calibre | OpenRCX, KLayout
+| Parasitic Extraction (PEX) & Signoff | [Synopsys Signoff](https://www.synopsys.com/implementation-and-signoff/signoff.html#products) | [Certus Closure Solution](https://www.cadence.com/en_US/home/resources/datasheets/cadence-certus-closure-solution-ds.html) (Includes Innovus, Pegasus, Quantus & Tempus) | Calibre | OpenRCX, KLayout
 
 \* Note about VCS: VCS is the simulator, the waveform viewer you may have used in EECS151 is called DVE (≠VCS). DVE is old, industry primarily now uses [Verdi](https://www.synopsys.com/verification/debug/verdi.html) for waveform viewing (photo [here](./Lab_5_assets_rewrite/verdi.png)) if they are in the Synopsys ecosystem for RTL simulation. 
 
@@ -43,14 +43,180 @@ The big 3 EDA (Electronic Design Automation) companies are Cadence, Synopsys, an
 You might've used the SkyWater 130nm PDK in EECS151 if you took the ASIC lab, however, the lab specs don't fully cover everything about the PDK you need to know for a successful tapeout; so this is the supplemental to it.
 
 First, a clarification: a PDK (Process Development Kit) typically includes the process technology data, process primatives, DRC and LVS decks; however, depending on the supplier, they might not include digital standard cell libraries.
-    * Process/Technology here refers to SkyWater 130nm. In other tapeouts this can refer to SkyWater 90nm, 16nm, etc. etc.
-    * Process primatives here refers to symbols, device parameters, Parameterized Cells for analog design; Technology data means SPICE models for transistors, capacitors, resisters, inductors, etc.
+* Process/Technology here refers to SkyWater 130nm. There are many different processes/technologies: SkyWater 90nm, GlobalFoundries 180nm, Intel 16 (AKA: Intel 22FFL), TSMC 16, etc.
+* Process primatives here refers to symbols, device parameters, Parameterized Cells (PCells) for analog design; Technology data means SPICE models for transistors, capacitors, resisters, inductors, etc.
+* Standard Cells here refer to basic digital logic blocks such as AND, OR, NOR gates in prebuilt blocks supplied by the foundry for building digital designs. For more see [A Closer Look at the Standard Cells](#a-closer-look-at-the-standard-cells).
 
-To prevent any confusion, we will refer to PDKs as the process primatives and Standard Cells as the digital standard cell library.
+To prevent any confusion, we will refer to **PDKs as the process primatives** and **Standard Cells as the digital standard cell library**.
 
 ## SkyWater 130nm Stackup
-
 <img src="./Lab_5_assets_rewrite/metal_stack.jpg" height="700px">
+
+Every PDK has a document or drawing similar to the one above. It is a documentation from the foundry describing how materials (like Silicon, Oxides, Metals) are stacked up in that manufacturing process. It also contains specifications that dictate the thickness of each metal layer, the distance required between metal layers, etc. 
+
+For the most part, you do not need to completely understand the diagram. While violating the parameters on this diagram (ex: misconfiguring the minimum distance between metal layers in your VLSI tool setup) will result in DRC violations or errors during the place & route flow, those errors will give you more information on a) what numbers to look for, b) where to look for them, c) what the numbers you are looking at do and how they affect your VLSI flow.
+
+Your job here is to understand and build a mental image of this process. When you see the layer "metal 1" you should know that the "li" (local interconnect) is right below it and that there is a connection "mcon" (metal contact) connecting them together. 
+
+You should start building this intuition so that when you see, for example, an error saying two pieces of metal are placed too close to each other near `via M1M2_PR_R`, you know to turn off all other layers other than Metal 1, Metal 2 and Via 1 in Innovus. Having the stack up in your head and being able to figure out what layers to look at vs. to disregard will make your PD life a lot easier since you can quickly triangulate a problem to a few limited sections of your chip and ignore the other overwhelming amounts of information. 
+
+Additionally, developing the intuition that a chip is like a layered cake/city and that signals coming from the outside world will be introduced to the chip at higher metal layers and will need to be routed down through the metal layer stack to contact the transistors, and vice-versa -- signals from the transistors that need to travel to another part of the chip or to the outside world (off chip) will need to be moved up from the bottom of the chip (where the transistors are located) through the metal layers.
+
+<details>
+<summary>I tried including as much as I know about the acroymns in the photo here if you are curious:</summary>
+nwell -> section of the substrate that has been n-type doped
+licon -> local interconnect contact
+li -> local interconnect
+mcon -> metal contect 
+
+FOX K=3.9 -> Field Oxide (SiO2), Dielectric Constant = 3.9
+PSG -> Phosophosilicate Glass (Doped with phosphorus)
+SPNIT -> Silicon Nitride Spacer
+IOX -> I/O (aka: Gate) Oxide
+</details>
+
+## A Closer Look at the Standard Cells
+Standard Cells are the fundamental building blocks of a digital design containing fundemental logic blocks such as AND, NOT, OR gates, Clock Buffers, Muxes, etc. They are placed and connected up in a digital design to build the logic that you have described in your Verilog/Chisel. 
+
+<img src="./Lab_5_assets_rewrite/std-cell-example-AND2X1.png" width="1200px">
+
+Here is a SkyWater 130nm Standard Cell. This one in particular represents a 2-input AND gate (named: `AND2X1` -- do you remember seeing something like this in your EECS151 ASIC post-synthesis netlist?)
+
+### Characterizing a Standard Cell: Describing it to the VLSI tools
+We have this nice visual graphic of the standard cell, however, we need to tell the CAD tools a bit more -- where are the input ports of this cell? where are the output ports? where to connect power to? groud? how big is the cell? etc...
+
+Given 1 standard cell like the AND2X1 above, there are different "views" of that standard cell. Looking at `/home/ff/ee198/ee198-20/sky130_col/sky130_scl_9T_0.1.2/sky130_scl_9T` we see the following folders:
+
+```bash
+$> ls /home/ff/ee198/ee198-20/sky130_col/sky130_scl_9T_0.1.2/sky130_scl_9T
+
+$> cdl  dspf  gds  lef  lib  oa  pgv  spectre  verilog
+```
+
+**CDL: Circuit Design Language**
+* A netlist description of the standard cell, usually generated by a tool from the schematic of that standard cell when it was designed.
+* It is similar to a SPICE netlist and is used in circuit simulation and **LVS** (will discuss later)
+    <!-- TODO: LINK LVS SECTION -->
+    ```
+    1 ************************************************************************
+    2 * Library Name: sky130_scl_9T
+    3 * Cell Name:    AND2X1
+    4 * View Name:    schematic
+    5 ************************************************************************
+
+    6 .SUBCKT AND2X1 A B Y VDD VSS
+    7 *.PININFO A:I B:I VDD:I VSS:I Y:O
+    8 Mmn2 Y n0 VSS VSS nfet_01v8 W=760n L=150n M=1
+    9 Mmn0 net127 B VSS VSS nfet_01v8 W=425n L=150n M=1
+    10 Mmn1 n0 A net127 VSS nfet_01v8 W=425n L=150n M=1
+    11 Mmp1 n0 B VDD VDD pfet_01v8 W=625n L=150n M=1
+    12 Mmp0 n0 A VDD VDD pfet_01v8 W=625n L=150n M=1
+    13 Mmp2 Y n0 VDD VDD pfet_01v8 W=1.13u L=150n M=1
+    14 .ENDS
+    ```
+* For that sane `AND2X1` cell:
+    * Line 6 & 7 describes its ports `A` (Input), `B` (Input), `Y` (Output), `VDD` (Input), `VSS` (Input)
+    * Line 8-13 describes physically how the standard cell is built, including the width & lengths of the MOSFETs used.
+
+**DSPF: Detailed Standard Parasitic Format**
+* Detailed model of RC parasitics for every net in the standard cell in SPICE like format -- and mainly used for SPICE sims. 
+
+**GDS: Graphical View**
+* This is that photo/screenshot above
+
+**LEF: Library Exchange Format**
+* These contain information regarding each standard cell (or broadly, each macro/logic block that can be placed)
+    * "information" = Cell name, a placement site that the specific standard cell can be placed at, XY-coordinates defining the origin of the standard cell, size of the cell, pin information (the cell's I/O).
+
+There are 2 LEF files for the Standard Cells in SKY130:
+* `/home/ff/ee198/ee198-20/sky130_col/sky130_scl_9T_0.1.2/sky130_scl_9T/lef/sky130_scl_9T.lef`
+* `/home/ff/ee198/ee198-20/sky130_col/sky130_scl_9T_0.1.2/sky130_scl_9T_tech/lef/sky130_scl_9T_phyCells.lef`
+    * This LEF houses information for some of the Special Cells we will explain in the [following section](#special-cells--blocks-fillers-taps-power-on-reset-por).
+
+<details>
+<summary>Detailed line-by-line explanations of the LEF</summary>
+
+```
+1     MACRO AND2X1
+2     CLASS CORE ;
+3     ORIGIN 0 0 ;
+4     FOREIGN AND2X1 0 0 ;
+5     SIZE 2.3 BY 4.14 ;
+6     SYMMETRY X Y ;
+7     SITE CoreSite ;
+8     PIN A
+9         DIRECTION INPUT ;
+10        USE SIGNAL ;
+11        ANTENNAMODEL OXIDE1 ;
+12        ANTENNAGATEAREA 0.1575 LAYER met1 ;
+13        ANTENNAMAXAREACAR 0.674603 LAYER met1 ;
+14        ANTENNAMAXSIDEAREACAR 0.793651 LAYER met1 ;
+15        PORT
+16        LAYER met1 ;
+17            RECT 0.33 1.695 0.59 2.935 ;
+18            RECT 0.285 2.335 0.59 2.625 ;
+19        END
+20    END A
+21    PIN B
+22        DIRECTION INPUT ;
+23        USE SIGNAL ;
+24        ANTENNAMODEL OXIDE1 ;
+25        ANTENNAGATEAREA 0.1575 LAYER met1 ;
+26        ANTENNAMAXAREACAR 1.052381 LAYER met1 ;
+27        ANTENNAMAXSIDEAREACAR 1.238095 LAYER met1 ;
+28        PORT
+29        LAYER met1 ;
+30            RECT 1.25 1.155 1.51 2.395 ;
+31        END
+32    END B
+33    PIN VDD
+34        DIRECTION INPUT ;
+35        USE POWER ;
+36        SHAPE ABUTMENT ;
+37        NETEXPR "VDD VDD!" ;
+38       PORT
+39        LAYER met1 ;
+40            RECT 0 3.94 2.3 4.34 ;
+41        END
+42    END VDD
+43    PIN VSS
+44        DIRECTION INPUT ;
+45        USE GROUND ;
+46        SHAPE ABUTMENT ;
+47        NETEXPR "VSS VSS!" ;
+48        PORT
+49        LAYER met1 ;
+50            RECT 0 -0.2 2.3 0.2 ;
+51        END
+52    END VSS
+53    PIN Y
+54        DIRECTION OUTPUT ;
+55        USE SIGNAL ;
+56        ANTENNADIFFAREA 0.50085 LAYER met1 ;
+57        PORT
+58        LAYER met1 ;
+59            RECT 1.495 2.86 1.97 3.51 ;
+60            RECT 1.71 0.625 1.97 3.51 ;
+61            RECT 1.495 0.625 1.97 0.915 ;
+62        END
+63    END Y
+64    OBS
+65        LAYER met1 ;
+66        RECT 0.575 3.24 1.03 3.53 ;
+67        RECT 0.8 0.685 1.03 3.53 ;
+68        RECT 0.145 0.655 0.375 0.945 ;
+69        RECT 0.145 0.685 1.03 0.915 ;
+70    END
+71    PROPERTY CatenaDesignType "deviceLevel" ;
+72    END AND2X1
+```
+* Line 2 specifies the location that 
+</details>
+
+
+### Special Cells & Blocks: Fillers, Taps, Power on Reset (PoR)
+
+### Characterizing the entire Process/Technology: Technology LEFs
 
 # Theory: Inputs/Outputs of each VLSI Step
 We've heard about the different tools for each step... What do these tools take in terms of input & what do they output? This section should help you understand flow of how your design goes from RTL to a GDS.
@@ -91,26 +257,15 @@ Corners represent a set of data that attempts to capture variations in the manuf
 You can find the script that your synthesis run used to generate MMMC corners at `${CY}/vlsi/build/chipyard.harness.TestHarness.<someConfig>-ChipTop/syn-rundir/mmmc.tcl`
 
 ### 3. Read in LEF files
-LEF or Library Exchange Format files includes rules and specifications about the standard cells and metal interconnects. There are 2 types of LEF files:
+LEF files includes rules and specifications about the standard cells and metal interconnects. Both Standard Cell LEFs and Technology LEFs are read in at this stage.
 
-Don't worry too much if you don't know what the following terms mean; We will come back to this section when you get to the [Exploring the SkyWater 130nm PDK section].
+If you are not sure what these terms mean, refer to the [Characterizing a Standard Cell: Describing it to the VLSI tools](#characterizing-a-standard-cell-describing-it-to-the-vlsi-tools) section.
 
 **Technology LEFs -- "Tech LEFs" -- ".tlefs"**
 * These contain information regarding the process as a whole (information about the stackup) -- diffusion layer, poly-silicon layer, metal interconnect information, Via information, possible placement sites ("classes") and their dimensions.
     * "information" = minimum spacing between metal lines, via width, spacing requirements, sheet resistance information for different metal layers and vias.
 
 The technology LEF for the SkyWater 130nm Process can be found at `/home/ff/ee198/ee198-20/sky130_col/sky130_scl_9T_0.1.2/sky130_scl_9T_tech/lef/sky130_scl_9T.tlef`. Take a look!
-
-
-**Standard Cell LEFs -- ".lef"**
-* These contain information regarding each standard cell (or broadly, each macro/logic block that can be placed)
-    * "information" = Cell name, a placement site that the specific standard cell can be placed at, XY-coordinates defining the origin of the standard cell, size of the cell, pin information (the cell's I/O).
-
-The LEFs for the SkyWater 130nm Process can be found at:
-* `/home/ff/ee198/ee198-20/sky130_col/sky130_scl_9T_0.1.2/sky130_scl_9T/lef/sky130_scl_9T.lef`
-* `/home/ff/ee198/ee198-20/sky130_col/sky130_scl_9T_0.1.2/sky130_scl_9T_tech/lef/sky130_scl_9T_phyCells.lef`
-
-We will explain why there are to .lef files in the [Exploring the SkyWater 130nm PDK section].
 
 ### 4. Read in RTL
 This step is pretty simple: the synthesis tool reads in all of the RTL that makes up your design! One of these files should be your top-level Verilog file.
