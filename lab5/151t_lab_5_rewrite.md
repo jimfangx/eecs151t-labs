@@ -386,7 +386,7 @@ Some older Standard Cells have tap cells integrated into its logic standard cell
 
 The Cadence SkyWater 130nm Standard Cells (SKY130_SCL) has built in tap cells in its logic standard cells.
 
-##### **Power on Reset:**
+#### **Power on Reset:**
 * A block that generates a reset signal that propagates through the entire chip so everything is set to a predefined state. It is essentially a giant RC network:
 
 <img src="./Lab_5_assets_rewrite/power-on-reset-signal-vs-vcc-ramp-up.png" width="400px">
