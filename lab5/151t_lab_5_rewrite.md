@@ -381,8 +381,9 @@ The fix for this is to hold nwell to VDD and substrate to ground, so that voltag
 
 Some older Standard Cells have tap cells integrated into its logic standard cells, in which case you won't see a Tap Cell under its Physical Cells list. However, newer processes have moved the Tap Cell out to its own cell in order to save area in the logical standard cells.
 * An additional set of (DRC) rules checks for latch-up compliance and tap cells are inserted as needed to resolve these violations. (Will discuss more during the DRC section).
-
 <!--TODO: LINK DRC SECTION-->
+
+<img src="./Lab_5_assets_rewrite/TaplessCell_vs_TapBuiltinCell.png">
 
 The Cadence SkyWater 130nm Standard Cells (SKY130_SCL) has built in tap cells in its logic standard cells.
 
@@ -414,6 +415,120 @@ Common other names of Technology LEFs: "Tech LEFs", ".tlefs"
 
 
 The technology LEF for the SkyWater 130nm Process can be found at `/home/ff/ee198/ee198-20/sky130_col/sky130_scl_9T_0.1.2/sky130_scl_9T_tech/lef/sky130_scl_9T.tlef`. Take a look!
+
+
+# Theory: Packaging Overview & Chip I/O
+> This section is largely taken from the old EECS151Tapeout Lab 5, written by Elam Day-Friedland.
+
+In order to interact with the outside world (as most useful chips do), we need to define an interface between the internal nets of an SoC and the 'nets' (usually PCB traces or discrete wires) external to it.
+This interface is realized through the use of so-called "IO" (input/output) cells on the SoC that are, through the SoC's [package](https://en.wikipedia.org/wiki/Integrated_circuit_packaging), exposed to the outside world.
+
+**[Gradescope] Identify a property that might be useful in an IO cell that wouldn't be necessary in a non-IO cell.** (Hint: think about what scary or non-standard things come from off-chip!)
+
+IO on a chip comes in two major flavors: pads and bumps.
+Pads are connected to the package via wire bonds, whereas a chip with bumps can either be wire-bonded or "flipped" and directly soldered onto the package substrate (a substrate is essentially a PCB with tighter tolerances).
+Check out the lecture on manufacturing to learn more!
+You can find the lecture folder [here](https://drive.google.com/drive/folders/1g8HB1NtqkX3s_v_RFG-lzUnx5HByMj9o).
+Below is a visual idea of the differences between pads and bumps.
+
+![Packaging](Lab_5_assets/packaging.png)
+
+For older processes, chips tend to be wirebonded, for more advanced processes/technologies, flip-chip bonding with bumps is more common.
+    * For SkyWater 130nm chips are wirebonded, however for a more advanced process like TSMC 16, chips are flip-chip bonded with bumps.
+
+# Applied: Cadence SKY130nm MPW Tapeout Area, I/O Specifications 
+> This section is largely taken from the old EECS151Tapeout Lab 5, written by Elam Day-Friedland.
+
+For the SkyWater 130nm tapeout, we will be using a ring of pads (a "pad ring") that surrounds our chip.
+This strategy is both convenient to wire-bond to and allows us to have a contiguous IO ring for our chip supplies, visualized below.
+
+![IO Ring](Lab_5_assets/io_ring.png)
+
+
+## IO Cell Library
+
+Just like designers (or, more accurately, CAD tools) use a standard cell library for implementing digital logic,
+we will use an IO library to implement our design's interface to the outside world.
+
+We will be using the Sky130 IO library [sky130_ef_io](https://github.com/RTimothyEdwards/open_pdks/tree/master/sky130/custom/sky130_fd_io),
+which is an Efabless (RIP :() addendum to the SkyWater I/O library [sky130_fd_io](https://skywater-pdk.readthedocs.io/en/main/contents/libraries/sky130_fd_io/docs/user_guide.html#i-o1-common-features).
+
+Warning: the sky130\_fd_io documentation may be inconsistent or out of date with what's used.
+We're confused too a lot of the time- a lot of configuration is set up over many iterations of trial-and-error (and slacking people who've tried and error-ed before).
+That's the beauty of abstraction!
+Once an opaque configuration issue has been solved, its solution can be easily integrated into others' projects.
+
+One important functionality that the IO cell layout provides is [ESD](https://en.wikipedia.org/wiki/Electrostatic_discharge) protection.
+This is particularly critical when these pins will be connected to unknown (and potentially dangerous) sources of electricity from the outside world.
+Even though your IO cells have ESD protection, you should still ground yourself when working on them!
+There's nothing worse than frying a chip because you didn't feel like putting on a cool [bracelet](https://www.amazon.com/iFixit-Anti-static-Wrist-Strap-Adjustable/dp/B00B2T9C8Y) when working on it :(.
+These 'ESD clamps' are effectively diodes that shunt high voltage spikes to be absorbed by the power rails, instead of your thin signal routing.
+
+The library contains many GPIO cells, but here are a couple of particular interest
+* `sky130_ef_io__gpiov2_pad_wrapped` is the default, workhorse digital pad. They have a spec-ed bandwidth of 66MHz (see the Sky130 IO Library docs linked above for more specs), and are generally what we use in standard SoC design
+* `sky130_ef_io__analog_pad_esd2` provides an analog interface to the outside world and support potentially higher bandwidth digital systems (although they require custom drivers/receivers)
+
+In addition to signal pads, we need to connect supply busses (rails). Here are the busses supported by this IO library (i.e. nets present in the IO ring):
+
+* VDDIO: an (optionally isolated) supply for off-chip interactions (i.e. to supply the IO pad drivers)- generally 3.3v (although it can be set to 1.8)
+
+* VSSIO: an (optionally isolated) ground for I/O interactions
+
+* VDDA: an (optionally isolated) supply for on-chip analog devices
+
+* VSSA: an (optionally isolated) ground for on-chip analog devices
+
+* VCCD: an (optionally isolated) supply for on-chip digital devices (generally 1.8v, the VDD of the default transistors in sky130)
+
+* VSSD: an (optionally isolated) ground for on-chip digital devices
+
+Remember that VSS means ground (0v) and VDD/VCC is the supply (i.e. usually max) voltage of the region it supplies.
+
+**[Gradescope] You'll notice that these supplies are optionally isolated.
+Even if, for example, VDDA and VCCD had the same voltage, why might we still want to isolate them?**
+
+`sky130_fd_io` uses overlays (i.e. added wires) on top of generic power/ground cells to determine which supply trace on the power ring to connect a given IO pad to.
+`sky130_ef_io` has pre-defined overlay + generic cells, such as `sky130_ef_io__vccd_lvc_clamped3_pad`.
+Thanks, Efabless!
+
+As we will see, Innovus needs special instructions to place these power cells, since they aren't explicitly instantiated through `IOBinder`s as signal IO cells are (see the following section for an introduction to `IOBinder`s).
+
+## IOs in Chipyard (Elaboration + Synthesis)
+In order for our design to utilize the IO cells discussed above, they must instantiated (along with what they connect to) in the netlist (i.e. in the RTL).
+Chipyard uses functions called [IOBinder](https://chipyard.readthedocs.io/en/stable/Customization/IOBinders.html)s to instantiate IO cells and connect them to internal SoC signals.
+You can find wrappers defined for the sky130\_ef_io cells we'll use in `generators/chipyard/src/main/scala/sky130/Sky130EFIOCells.scala` within your Chipyard repo.
+Check out `Sky130EFIOCellTypeParams` for instantiations of the cells that could be used by our design (`analog`, `gpio`, etc.).
+
+Take a look at the `HasSky130EFIOCells` trait that's included in `WithSky130ChipTop`, which our `OFOTConfig` uses.
+This is where the magic happens: for each `toplevel` port (ports are created by fragments in the config such as `WithUARTAdapter`), an `iocell` is instantiated, registered and connected to the port.
+This allows the concept of 'toplevel' ports in RTL to be decoupled from how they are realized (by being mapped to a physical IO cell for physical design, for example). 
+
+**[Gradescope] IO Cells aren't the only thing ports map to! What's a use-case aside from physical design for these port objects?** (hint: think simulation)
+
+## IO Maps in Innovus (Physical Placement)
+
+We need to tell our place-and-route tool (here, Innovus) where to put the IO cells for the signals we've attached `IOBinder`s to as well as, where to put power pads to bring power to our IO ring.
+We do this through an "IO map", generated by a script called `gen-io-file.py`, located in `vlsi/scripts`.
+An "IO map" in Innovus is a list of io cell nets and their placement coordinates.
+The map also includes cell names (such as the `sky130_ef_io__vccd_lvc_clamped3_pad` mentioned above) when they aren't inferable from the RTL.
+This occurs, for example, with power pads which aren't explicitly instantiated in the RTL.
+It takes in a yml of the desired IO configuration (which cells to put where),
+and is executed by `vlsi/Makefile` as a dependency for the flow when the `IS_TOP_RUN` variable is true.
+The `IS_TOP_RUN` variable in `vlsi/Makefile` decides when to generate this IO map,
+and is set to `1` by default but is disabled for `tutorial=sky130-commercial` flows, since they do not need IO pads.
+In addition to placing signal (and extra, such as filler) IOs based on the yml,
+the script also generates IO placements for the supply busses, so we can provide VCCD VSSD, etc. to our chip.
+
+**[Gradescope] Give the path to the yml that gen-io-file.py is looking for (hint: look in the `Makefile`). What would you have to add if you increased the Serial TileLink bus width?**
+
+Once you've run `make CONFIG=OFOTConfig par`, you should see an `io_map.io` file in your `vlsi/build/<config>`.
+Open it up, and take a look inside!
+You'll notice that signal `inst`s don't have explicit `cell`s attached (just a placement),
+since the RTL already provides a reference to the cell,
+whereas supply cells do,
+since they will be inserted manually.
+
+**[Gradescope] What's the point of placing corner/filler IO cells? They don't provide any pads/IO...**
 
 # Theory: Inputs/Outputs of each VLSI Step
 We've heard about the different tools for each step... What do these tools take in terms of input & what do they output? This section should help you understand flow of how your design goes from RTL to a GDS.
