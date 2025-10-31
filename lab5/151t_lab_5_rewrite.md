@@ -308,6 +308,7 @@ The files for these cells are available here: `/home/ff/ee198/ee198-20/sky130_co
         * During manufacturing (specifically, [plasma etching](https://en.wikipedia.org/wiki/Plasma_etching), a form of [dry etching](https://en.wikipedia.org/wiki/Dry_etching)), charge is deposited onto metal lines/interconnects. These metal lines can be connected to the polysilicon gates of transistors and also can be left floating during parts of the manufacturing process before other upper metal layers are deposited.
       * These unconnected metal lines will sit there and collect charge throughout the manufacturing process.
       * Charge built up on these lines can suddenly discharge into the gate of the transistor, which causes gate oxide breakdown => broken transistor => broken chip.
+      
       ![antenna_effect](./Lab_5_assets_rewrite/antenna_effect.gif)
     * Antenna diodes are reverse biased diodes that leak charge to ground to prevent the charge from going into the transistor's gate.
         * This results in higher parasitic capacitance (resulting in a slower circuit) and higher leakage power (higher static power) on that net.
@@ -339,7 +340,9 @@ The files for these cells are available here: `/home/ff/ee198/ee198-20/sky130_co
 
 * A design without fillers will likely result in (DRC) errors. Particularly if you fail to place fillers, it'll likely result in a `nwell minimum spacing not met` DRC violation. This is because of the Well Proximity Effect.
     * The result of the Well Proximity Effect is that doping level at the edges of [nwells](#skywater-130nm-stackup) tends to be different than the doping level at the middle of the nwell. This means, for consistency, we want to have as large of a nwell as possible, which is created through having devices sit right next to each other. ([More Information](https://analoghub.ie/category/Layout/article/layoutDependentEffects#WPE))
-    <img src="./Lab_5_assets_rewrite/Well_Proximity_Effect.jpg">
+    
+        <img src="./Lab_5_assets_rewrite/Well_Proximity_Effect.jpg">
+    
     * Having gaps in your design (due to a lack of filler cells) will result in chunks of different nwells throughout the design, which results in more devices sitting at the edge of nwells, and more devices suffering from this doping inconsistency.
    * It's also a headache for the fabrication house...
    (More masks to create space for the gaps in your design)
