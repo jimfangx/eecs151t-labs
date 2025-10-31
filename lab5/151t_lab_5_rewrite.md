@@ -29,7 +29,7 @@ The big 3 EDA (Electronic Design Automation) companies are Cadence, Synopsys, an
 | RTL Simulation | VCS* | Xcelium | Questa (formerly Mentor ModelSim) | Icarus Verilog, Verilator
 | RTL-Power | PrimePower RTL, SpyGlass | Joules | PowerPro-RTL | - |
 | Synthesis | FusionCompiler (Design Compiler) | Genus | Oasys-RTL | Yosys Open Synthesis Suite
-| Place & Route | FusionCompiler (IC Compiler II) | Innovus | Aprisa | OpenROAD | 
+| Place & Route | FusionCompiler (IC Compiler II) | Innovus | Aprisa | OpenROAD (OpenLANE for SkyWater 130nm) | 
 | Physical Layout (for Full Custom Analog/Digital), Analog/Mixed-Signal IC | Custom Compiler | Virtuoso | L-Edit^ | - |
 | Gate Level Power | PrimePower | Voltus | PowerPro | - |
 | DRC/LVS/Physical Verification | IC Validator | Pegasus | Calibre | Magic [Developed at Berkeley!], KLayout
@@ -58,7 +58,7 @@ For the most part, you do not need to completely understand the diagram. While v
 
 Your job here is to understand and build a mental image of this process. When you see the layer "metal 1" you should know that the "li" (local interconnect) is right below it and that there is a connection "mcon" (metal contact) connecting them together. 
 
-You should start building this intuition so that when you see, for example, an error saying two pieces of metal are placed too close to each other near `via M1M2_PR_R`, you know to turn off all other layers other than Metal 1, Metal 2 and Via 1 in Innovus. Having the stack up in your head and being able to figure out what layers to look at vs. to disregard will make your PD life a lot easier since you can quickly triangulate a problem to a few limited sections of your chip and ignore the other overwhelming amounts of information. 
+You should start building this intuition so that when you see, for example, an error saying two pieces of metal are placed too close to each other near `via M1M2_PR_R`, you know to turn off all other layers other than Metal 1, Metal 2 and Via 1 in Innovus (you shouldn't even need to know what a via is at this point, the M1M2 name along should be enough of a hint). Having the stack up in your head and being able to figure out what layers to look at vs. to disregard will make your PD life a lot easier since you can quickly triangulate a problem to a few limited sections of your chip and ignore the other overwhelming amounts of information. 
 
 Additionally, developing the intuition that a chip is like a layered cake/city and that signals coming from the outside world will be introduced to the chip at higher metal layers and will need to be routed down through the metal layer stack to contact the transistors, and vice-versa -- signals from the transistors that need to travel to another part of the chip or to the outside world (off chip) will need to be moved up from the bottom of the chip (where the transistors are located) through the metal layers.
 
@@ -73,6 +73,8 @@ FOX K=3.9 -> Field Oxide (SiO2), Dielectric Constant = 3.9
 PSG -> Phosophosilicate Glass (Doped with phosphorus)
 SPNIT -> Silicon Nitride Spacer
 IOX -> I/O (aka: Gate) Oxide
+
+(Take EE143 :P)
 </details>
 
 ## A Closer Look at the Standard Cells
@@ -83,9 +85,9 @@ Standard Cells are the fundamental building blocks of a digital design containin
 Here is a SkyWater 130nm Standard Cell. This one in particular represents a 2-input AND gate (named: `AND2X1` -- do you remember seeing something like this in your EECS151 ASIC post-synthesis netlist?)
 
 ### Characterizing a Standard Cell: Describing it to the VLSI tools
-We have this nice visual graphic of the standard cell, however, we need to tell the CAD tools a bit more -- where are the input ports of this cell? where are the output ports? where to connect power to? groud? how big is the cell? etc...
+We have this nice visual graphic of the standard cell, however, we need to tell the CAD tools a bit more -- where are the input ports of this cell? where are the output ports? where to connect power to? ground? how big is the cell? etc...
 
-Given 1 standard cell like the AND2X1 above, there are different "views" of that standard cell. Looking at `/home/ff/ee198/ee198-20/sky130_col/sky130_scl_9T_0.1.2/sky130_scl_9T` we see the following folders:
+Given 1 standard cell like the AND2X1 above, there are different "views" of that standard cell. Looking at `/home/ff/ee198/ee198-20/sky130_col/sky130_scl_9T_0.1.2/sky130_scl_9T` we see the following folders, each representing a different set of information about the standard cell:
 
 ```bash
 $> ls /home/ff/ee198/ee198-20/sky130_col/sky130_scl_9T_0.1.2/sky130_scl_9T
@@ -114,7 +116,7 @@ $> cdl  dspf  gds  lef  lib  oa  pgv  spectre  verilog
     13 Mmp2 Y n0 VDD VDD pfet_01v8 W=1.13u L=150n M=1
     14 .ENDS
     ```
-* For that sane `AND2X1` cell:
+* For that same `AND2X1` cell:
     * Line 6 & 7 describes its ports `A` (Input), `B` (Input), `Y` (Output), `VDD` (Input), `VSS` (Input)
     * Line 8-13 describes physically how the standard cell is built, including the width & lengths of the MOSFETs used.
 
@@ -210,13 +212,133 @@ There are 2 LEF files for the Standard Cells in SKY130:
 71    PROPERTY CatenaDesignType "deviceLevel" ;
 72    END AND2X1
 ```
-* Line 2 specifies the location that 
+* Line 2 specifies the class that a macro can be placed in. These classes are defined in the [Technology LEF](#characterizing-the-entire-processtechnology-technology-lefs).
+* Line 3 - `ORIGIN`: Specifies how to find the origin of the macro to align with a placement point. If ORIGIN is given in the macro, the macro is shifted by the ORIGIN x, y values.
+* Line 4: `FOREIGN foreignCellName [pt [orient]]` - 
+    >Specifies the foreign (GDSII) structure name to use when placing an instance of the macro. The optional pt coordinate specifies the macro origin (lower left corner when the macro is in north orientation). Default offset is 0 0.
+* Line 5: Specifies a placement bounding rectangle, in microns, for the macro. Placers assume the placement bounding rectangle cannot overlap placement bounding rectangles of other macros by default
+* Line 7: Where the Macro can be placed. CoreSite is defined in the [Technology LEF](#characterizing-the-entire-processtechnology-technology-lefs).
+* Then for each I/O pin of the standard cell, it defines the geometry of the port, the layer that its on, etc.
+* For more on the syntax of  LEF file, you should refer to the Cadence LEF/DEF manual here: https://drive.google.com/file/d/11f-7cCzddl_lga5LUSpBbYsDdlnHN7bO/view?usp=drive_link
+
+> [!CAUTION]
+> UNDER NO CIRCUMSTANCES SHOULD YOU COPY AND REDISTRIBUTE CADENCE MANUALS. YOU ARE FREE TO DOWNLOAD THEM IF NEEDED, BUT LIMIT SHARING TO THE BARE MINIMUM. DO NOT SHARE WITH ANYONE NOT AFFILIATED WITH UC BERKELEY.
 </details>
 
+**LIB: Liberty Timing Files**
+.lib files: Liberty Timing Files are timing libraries generated by the foundry that contains timing, area and power information for standard cells.
 
-### Special Cells & Blocks: Fillers, Taps, Power on Reset (PoR)
+For the SkyWater 130nm Process, Liberty Timing Files can be found at `/home/ff/ee198/ee198-20/sky130_col/sky130_scl_9T_0.1.2/sky130_scl_9T/lib`. Each file represents a different corner -- for what this means, see the [Synthesis//Generate MMMC Section](#2-writegenerate-mmmc-multi-mode-multi-corner-views-then-read-in-mmmc-files).
+
+**OA: openAccess Format**
+* View of the standard cell and its schematic in openAccess (formally Genesis) format. This format is mainly used so these (Cadence designed) standard cells can be opened in other tools. 
+* Read more about openAccess here and how it was never meant to be open: https://semiwiki.com/eda/606-openaccess/
+
+**PGV: Power-Grid View**
+* Modeling/Characterization of the power delivery network of the standard cell. These files contain the cell's geometries and parasitic numbers that are required for power/IR/ESD analysis.
+    * IR / IR Drop analysis = The power delivery network on a chip is made up of metal stripes. Metal has resistance too, and as power flows through the chip's metal stripes to the standard cells, it will lose voltage. This means that some standard cells may receive less voltage than others/amount originally applied. The amount of voltage drop that occurs is called the IR drop.
+    * ESD analysis/verification = 
+* These files exist since we can reuse some of this power data across multiple designs that use the same standard cells instead of having the power/parasitic analysis tools recalculate everything from scratch.
+
+
+**Spectre: Cadence Spectre SPICE Simulation Model**
+* Another format similar to the CDL format used for SPICE circuit simulation. A snippit for the AND2X1 cell is in the drop down below - notice how similar it looks to the CDL.
+<details>
+<summary>AND2X1 Spectre</summary>
+
+```
+// Library name: sky130_scl_9T
+// Cell name: AND2X1
+// View name: schematic
+subckt AND2X1 A B Y VDD VSS
+    mn2 (Y n0 VSS VSS) nfet_01v8 w=(760n) l=150n as=201.4f \
+        ad=201.4f ps=2.05u pd=2.05u m=(1)*(1)
+    mn0 (net127 B VSS VSS) nfet_01v8 w=(425n) l=150n as=112.625f \
+        ad=112.625f ps=1.38u pd=1.38u m=(1)*(1)
+    mn1 (n0 A net127 VSS) nfet_01v8 w=(425n) l=150n as=112.625f \
+        ad=112.625f ps=1.38u pd=1.38u m=(1)*(1)
+    mp1 (n0 B VDD VDD) pfet_01v8 w=(625n) l=150n as=165.625f \
+        ad=165.625f ps=1.78u pd=1.78u m=(1)*(1)
+    mp0 (n0 A VDD VDD) pfet_01v8 w=(625n) l=150n as=165.625f \
+        ad=165.625f ps=1.78u pd=1.78u m=(1)*(1)
+    mp2 (Y n0 VDD VDD) pfet_01v8 w=(1.13u) l=150n as=299.45f \
+        ad=299.45f ps=2.79u pd=2.79u m=(1)*(1)
+ends AND2X1
+// End of subcircuit definition.
+```
+
+</details>
+
+**Verilog View:**
+* A Verilog module describing the behavior and timing information of that cell is provided for the synthesis tools to understand the logical behavior of the cell when synthesizing your behavioral Verilog to a gate-level netlist, for use during gate-level simulation, and can help simulators determine timing correctness as well.
+
+This is the Verilog model for that same AND2X1 cell -- this should be fairly self-explanatory what the behavior of it is:
+```Verilog
+// type: AND2 
+`timescale 1ns/10ps
+`celldefine
+module AND2X1 (Y, A, B);
+	output Y;
+	input A, B;
+
+	// Function
+	and (Y, A, B);
+
+	// Timing
+	specify
+		(A => Y) = 0;
+		(B => Y) = 0;
+	endspecify
+endmodule
+`endcelldefine
+```
+
+### Physical Cells: Fillers, Taps, DeCaps, Tie Cells, Antenna Diodes, Power on Reset (PoR)
+There are some special standard cells/macros that don't represent logic but are essential to a digital design. These are called "Physical Only Cells" ("PhyCell").
+
+Physical Only cells do not appear on timing path reports and do not contain any logic. They are purely there for manufacturability reasons and to ensure DRC compliance.
+
+The files for these cells are available here: `/home/ff/ee198/ee198-20/sky130_col/sky130_scl_9T_0.1.2/sky130_scl_9T_tech` if you want to follow along.
+
+<img src="./Lab_5_assets_rewrite/sky130-phycell-example.png">
+
+**Antenna Diodes & The Antenna Effect:**
+* Antenna diodes are included to prevent the antenna effect that occures during fabrication.
+    * Antenna Effect: an effect that occurs during the fabrication process that can render a die useless.
+        * During manufacturing (specifically, [plasma etching](https://en.wikipedia.org/wiki/Plasma_etching), a form of [dry etching](https://en.wikipedia.org/wiki/Dry_etching)), charge is deposited onto metal lines/interconnects. These metal lines can be connected to the polysilicon gates of transistors and also can be left floating during parts of the manufacturing process before other upper metal layers are deposited. 
+      * These unconnected metal lines will sit there and collect charge throughout the manufacturing process.
+      * Charge built up on these lines can suddenly discharge into the gate of the transistor, which causes gate oxide breakdown => broken transistor => broken chip.
+      ![antenna_effect](./Lab_5_assets_rewrite/antenna_effect.gif)
+    * Antenna diodes are reverse biased diodes that leak charge to ground to prevent the charge from going into the transistor's gate.
+        * This results in higher parasitic capacitance (resulting in a slower circuit) and higher leakage power (higher static power) on that net. 
+    ![antenna_diode_insertion](./Lab_5_assets_rewrite/antenna_diode_insertion.gif)
+    ![antenna_diode_charge_flow](./Lab_5_assets_rewrite/antenna_diode_charge_flow.png)
+* Antenna violations are checked using a physical verification tool (Will discuss more during the DRC section) with a deck that has rules on the maximum allowed ratio between metal-interconnects to gate area allowed ("antenna ratio").
+<!--TODO: LINK DRC SECTION-->
+
+<details>
+    <summary>Other ways to prevent the antenna effect</summary>
+    1. Metal Hopping / Jumper Insertion: Break the lengthy metal interconnect into small pieces using jumper interconnects/wires to other metal layers so that a piece of interconnect never gets lengthy enough to collect enough charge to break down the transistor's gate oxide.
+
+* The advantage of this is avoiding the higher parasitic capacitance and leakage power associated with a diode, however, it comes at a cost of potentially more congestion in the upper metal layers of the design & an increase in the number of [Vias](#characterizing-the-entire-processtechnology-technology-lefs) between metal layers placed. 
+    
+    ![antenna_alt_jumper](./Lab_5_assets_rewrite/antenna_alt_jumper.png)
+    
+    2. Dummy Transistor Insertion: Increase the effective gate area of the transistor by adding a dummy transistor next to the transistor that you originally placed. This decreases the ratio between metal-interconnects to gate area. The downsides of this is quite obvious: more dummy transistors = less area for useful logic + more power consumed.
+    ![antenna_alt_dummy_transistor](./Lab_5_assets_rewrite/antenna_alt_dummy_transistor.png)
+</details>
+    
+
+
 
 ### Characterizing the entire Process/Technology: Technology LEFs
+Common other names of Technology LEFs: "Tech LEFs", ".tlefs"
+* These contain information regarding the process as a whole (information about the stackup) -- diffusion layer, poly-silicon layer, metal interconnect information, Via information, possible placement sites ("classes") and their dimensions.
+    * "information" = minimum spacing between metal lines, via width, spacing requirements, sheet resistance information for different metal layers and vias.
+
+* This information is used by the VLSI tools to determine 
+
+The technology LEF for the SkyWater 130nm Process can be found at `/home/ff/ee198/ee198-20/sky130_col/sky130_scl_9T_0.1.2/sky130_scl_9T_tech/lef/sky130_scl_9T.tlef`. Take a look!
 
 # Theory: Inputs/Outputs of each VLSI Step
 We've heard about the different tools for each step... What do these tools take in terms of input & what do they output? This section should help you understand flow of how your design goes from RTL to a GDS.
@@ -246,10 +368,6 @@ The process of doing this at a high level is:
 2. Read in `.lib` files
 3. Create MMMC corners
 
-.lib files: Liberty Timing Files are timing libraries generated by the foundry that contains timing, area and power information for standard cells.
-
-For the SkyWater 130nm Process, Liberty Timing Files can be found at `/home/ff/ee198/ee198-20/sky130_col/sky130_scl_9T_0.1.2/sky130_scl_9T/lib`. Each file represents a different corner -- for what this means, see the following paragraph.
-
 MMMC Corners: Multi-mode, Multi-corner views attempt to cover all real world environments where your chip may be used in, then provide this information to the tool, so it can accurately provide timing information.
 Modes are defined by different functional modes that your chip will operate in (high-performance, low-power, etc.) -- This is reflected by different supply voltages and timing constraints.
 Corners represent a set of data that attempts to capture variations in the manufacturing process (specifically higher and lower carrier mobilities in NMOS & PMOS -- Read more [here](https://en.wikipedia.org/wiki/Process_corners#FEOL_corners)) and how they will impact performance of the chip, along with how variations in voltage and temperature of the surrounding environment that your chip will operate in will change timing and other parameters.
@@ -259,13 +377,7 @@ You can find the script that your synthesis run used to generate MMMC corners at
 ### 3. Read in LEF files
 LEF files includes rules and specifications about the standard cells and metal interconnects. Both Standard Cell LEFs and Technology LEFs are read in at this stage.
 
-If you are not sure what these terms mean, refer to the [Characterizing a Standard Cell: Describing it to the VLSI tools](#characterizing-a-standard-cell-describing-it-to-the-vlsi-tools) section.
-
-**Technology LEFs -- "Tech LEFs" -- ".tlefs"**
-* These contain information regarding the process as a whole (information about the stackup) -- diffusion layer, poly-silicon layer, metal interconnect information, Via information, possible placement sites ("classes") and their dimensions.
-    * "information" = minimum spacing between metal lines, via width, spacing requirements, sheet resistance information for different metal layers and vias.
-
-The technology LEF for the SkyWater 130nm Process can be found at `/home/ff/ee198/ee198-20/sky130_col/sky130_scl_9T_0.1.2/sky130_scl_9T_tech/lef/sky130_scl_9T.tlef`. Take a look!
+If you are not sure what these terms mean, refer to the [Characterizing a Standard Cell: Describing it to the VLSI tools](#characterizing-a-standard-cell-describing-it-to-the-vlsi-tools) and [Characterizing the entire Process/Technology: Technology LEFs](#characterizing-the-entire-processtechnology-technology-lefs) sections.
 
 ### 4. Read in RTL
 This step is pretty simple: the synthesis tool reads in all of the RTL that makes up your design! One of these files should be your top-level Verilog file.
@@ -408,6 +520,7 @@ You can take a look at the CPF that our flow reads in at `${CY}/vlsi/build/chipy
 
 ### 6. IO Fillers
 For our IC design, I/O cells are found at the {top, left, right, bottom} edges of the chip in order to allow our chip to interface with the outside world. 
+
 ^ If this concept is foreign to you, see the first photo in the [Floorplanning section of EECS151-LA Lab 4](https://github.com/EECS150/asic-labs-sp24/tree/main/lab4#floorplanning).
 
 However, it is not a great idea to have our I/O cells directly touching each other (exercise for the reader: why?*). So we need to insert special "I/O fillers" between the different I/O cells. What this exactly looks like on our chip is best illustrated with photos:
