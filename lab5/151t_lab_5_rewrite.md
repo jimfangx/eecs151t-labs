@@ -739,23 +739,94 @@ Here is a photo from an actual SkyWater 130nm design that shows the Core Ring, h
 <img src="./Lab_5_assets_rewrite/par-core-ring-practical.png">
 
 ### 8. Draw power straps
+In the previous step we drew the power ring, which are the sources of power and ground for all the standard cells in the design. However, drawing wires to every cell from the ring would cause voltage drop (IR Drop) which causes noise for the VDD and Ground signals of each cell{edit this explanation of IR Drop and probably add more detail}. To prevent this, we place horizontal and vertical straps across the rings to distribute power and ground evenly and minimize the effects of IR Drop. Using Hammer, power straps are generated given user parameters in the .yml configuration of the technology(this case sky130.yml). The commands for Innovus to create the power straps is found it its own TCL file called power_straps.tcl which specifies the metal layers, spacing, and width of the straps, etc.  
 
-/scratch/jfx/barduino-ofot/vlsi/build/chipyard.harness.TestHarness.BarduinoConfig-ChipTop/par-rundir/power_straps.tcl
+${CY}/vlsi/build/chipyard.harness.TestHarness.<your config>-ChipTop/par-rundir/power_straps.tcl
+
+<details>
+<summary>Here is the TCL for your reference:</summary>
+
+    1   reset_db -category add_stripes
+    2   set_db add_stripes_stacked_via_bottom_layer met1
+    3   set_db add_stripes_stacked_via_top_layer met1
+    4   set_db add_stripes_spacing_from_block 4.000
+    5   add_stripes -pin_layer met1 -layer met1 -over_pins 1 -master "sky130_fd_sc_hd__tapvpwrvgnd_1" -block_ring_bottom_layer_limit met1 -block_ring_top_layer_limit met1 -pad_core_ring_bottom_layer_limit met1 -pad_core_ring_top_layer_limit met1 -direction horizontal -width pin_width -nets { VSS VDD }
+    6
+    7   reset_db -category add_stripes
+    8   set_db add_stripes_stacked_via_top_layer met2
+    9   set_db add_stripes_stacked_via_bottom_layer met1
+    10   set_db add_stripes_trim_antenna_back_to_shape {stripe}
+    11   set_db add_stripes_spacing_from_block 4.000
+    12   add_stripes -create_pins 0 -block_ring_bottom_layer_limit met2 -block_ring_top_layer_limit met1 -direction vertical -layer met2 -nets {VSS VDD} -pad_core_ring_bottom_layer_limit met1 -set_to_set_distance 82.80 -spacing 2.26 -switch_layer_over_obs 0 -width 0.96 -area [get_db designs .core_bbox] -start [expr [lindex [lindex [get_db designs .core_bbox] 0]
+    13   add_stripes -create_pins 0 -block_ring_bottom_layer_limit met2 -block_ring_top_layer_limit met1 -direction vertical -layer met2 -nets {VSS VDD} -pad_core_ring_bottom_layer_limit met1 -set_to_set_distance 82.80 -spacing 2.26 -switch_layer_over_obs 0 -width 0.96 -area [get_db designs .core_bbox] -start 3328.0
+    14
+    15   reset_db -category add_stripes
+    16   set_db add_stripes_stacked_via_top_layer met3
+    17   set_db add_stripes_stacked_via_bottom_layer met2
+    18   set_db add_stripes_trim_antenna_back_to_shape {stripe}
+    19   set_db add_stripes_spacing_from_block 2.000
+    20   add_stripes -create_pins 0 -block_ring_bottom_layer_limit met3 -block_ring_top_layer_limit met2 -direction horizontal -layer met3 -nets {VSS VDD} -pad_core_ring_bottom_layer_limit met2 -set_to_set_distance 14.96 -spacing 3.62 -switch_layer_over_obs 0 -width 1.14 -area [get_db designs .core_bbox] -start [expr [lindex [lindex [get_db designs .core_bbox] 0
+    21
+    22   reset_db -category add_stripes
+    23   set_db add_stripes_stacked_via_top_layer met4
+    24   set_db add_stripes_stacked_via_bottom_layer met3
+    25   set_db add_stripes_trim_antenna_back_to_shape {stripe}
+    26   set_db add_stripes_spacing_from_block 2.000
+    27   add_stripes -create_pins 0 -block_ring_bottom_layer_limit met4 -block_ring_top_layer_limit met3 -direction vertical -layer met4 -nets {VSS VDD} -pad_core_ring_bottom_layer_limit met3 -set_to_set_distance 20.24 -spacing 4.58 -switch_layer_over_obs 0 -width 1.86 -area [get_db designs .core_bbox] -start [expr [lindex [lindex [get_db designs .core_bbox] 0]
+    28
+    29   reset_db -category add_stripes
+    30   set_db add_stripes_stacked_via_top_layer met5
+    31   set_db add_stripes_stacked_via_bottom_layer met4
+    32   set_db add_stripes_trim_antenna_back_to_shape {stripe}
+    33   set_db add_stripes_spacing_from_block 2.000
+    34   add_stripes -create_pins 1 -block_ring_bottom_layer_limit met5 -block_ring_top_layer_limit met4 -direction horizontal -layer met5 -nets {VSS VDD} -pad_core_ring_bottom_layer_limit met4 -set_to_set_distance 61.2 -spacing 18.4 -switch_layer_over_obs 0 -width 5.4 -area [get_db designs .core_bbox] -start [expr [lindex [lindex [get_db designs .core_bbox] 0]
+
+</details>
 
 ### 9. Place IO Cells, Promote Top Level I/O Pins
+As we discussed before, there is an IO Cell library which provides all the cells that map to a different signal pads for signal buses(VDD, VSS, etc), GPIO and power. This step focuses on the placement of these IO cells within the IO ring given specific placement constraints which are defined in the IO Binder. Power pads have specific placement coordinates in the pad .
+
+In verilog, every module has input ports/signals(ex: clk, rst, uart, etc) that connect the module to other modules or the real world. In an hierarchical design, the module at the top of the hierarchy gets their input pins on the core be "promoted" to be connected to the IO pad ring. 
 
 ### 10. Place Opt Design
+Given all the standard cells provided in the synthesized netlist, Innovus performs many algorithms to place the standard cells together based on design constraints in order to meet timing, avoid congestion, and provide clear access to pins. In the placement stage, there are hard and soft constraints for hard macro blocks and the standard cells. Hard constraints must be satisfied and are typically tied to the placement location of hard macros. Soft constraints are preferences that can be violated as they provide guidance in the optimization placement. The floorplan provides the core area which constrains all the logic to be inside the fence of the IO ring. The SDC files provide the timing information which how close standard cells and logic need to placed together to meet timing. In addition, standard cells will be made sure to not be placed too close together to prevent congestion of the wires as wires being too close together leads to cross talk which is where the magnetic field of the current of a nearby wires affects the signal integrity of other wires.  
 
 ### 11. Set CTS Buffer & Clock Gating Cells, Perform CTS (ccopt_design)
+Clock Tree Synthesis(CTS) is process of distributing the clock signal to all flip flops in the design as evenly as possible so the clock received at every leaf is the same. This is to prevent clock skew and reduce the likelihood of setup and hold time violation in order to meet timing constraints. Lab 4 of the 151 ASIC labs covers this topic and it is recommended to read the CTS section in that lab spec. Innovus uses algorithms to place and route the clock tree across the chip and optimizes based on clusters of sequential logic and uses Buffer cells to balance the delay between different leaves by decreasing delay. Clock gating cells are special cells in CTS that control whether the clock signal is distributed to active parts of the chip. Clock gating is important for reducing power(specifically dynamic power) and its placement is optimized to meet timing during the CTS process. 
 
 ### 12. Route Design
+Performs routing of all the standard cells and macros together. There are two main steps in the route design process, global and detail routing. 
+
+Global routing: Determines the high-level topology between blocks that satisfies timing constraints while minimizing congestion and wirelength. During global routing, routing resources such as tracks and vias are allocated, and preliminary wire segments are laid out.
+
+Detail Routing: Focuses on routing individual interconnections within the routing channels defined during global routing. Detail routing algorithms consider factors such as wire width, spacing, and via minimization to optimize routing density and signal integrity. 
 
 ### 13. Opt Design
+Optimizes the design post routing with the exact measurements for the wires to calculate parasitic resistance and capacitance of the nets. Given this information, Innovus can rerun timing analysis and perform more optimizations to meet timing constraints and fix setup and hold time violations through resizing standard cells or adding buffers. 
 
 ### 14. Add Fillers
+As mentioned before, filler cells are essential to the manufacturability to prevent DRC errors and power stability across the chip through adding decoupling capacitors. This step places all filler cells to fill in gaps of the design and add decoupling capacitors to certain areas of the chip for power stability. 
+
+<details>
+<summary>Here is the TCL that places Layer Fill for your reference:</summary>
+    1   set_db add_fillers_cells "FILL_DECAP8 FILL_DECAP16 FILL1 FILL2 FILL4 FILL8 FILL16"
+    2   add_fillers -base_cells "FILL_DECAP16" -area "263 3415 3341 4936" -density 0.1
+    3   add_fillers -base_cells "FILL_DECAP16" -area "1512 300 3318 3500" -density 0.15
+    4   add_fillers -base_cells "FILL_DECAP16" -area "1010 300 1521 3024" -density 0.2
+    5   add_fillers -base_cells "FILL_DECAP16" -area "264 300 1030 819" -density 0.2
+    6   add_fillers -base_cells "FILL_DECAP16" -area "272 820 444 3455"
+    7   add_fillers -base_cells "FILL_DECAP16" -area "743 3090 1189 3394"
+    8   add_fillers -base_cells "FILL_DECAP16" -area "62 300 3541 600" -density 0.15
+    9   add_fillers -base_cells "FILL_DECAP16" -area "2818 660 3480 5033" -density 0.15
+   10   add_fillers -base_cells "FILL_DECAP16" -area "62 4372 2500 5082" -density 0.15
+   11   add_fillers -base_cells "FILL_DECAP16" -area "62 3380 772 4261" -density 0.15
+   12   set_db add_fillers_cells "FILL1 FILL2 FILL4 FILL8 FILL16"
+   13   add_fillers
+<details>
+
 
 ### 15. GDS Stream Out
-
+The final design is exported in a GDS(or GDSII) file format which is a graphical representation of the chip with all the standard cells, wires, vias, etc stacked on top of each other on different metal and via layers as seen on the stackup. This is the file that is distributed to the foundry to be manufactured as it acts as the blue print of the chip. While receiving the GDS may seem like the end of physical design, it is necessary to undergo more stages of physical verification to be certain that the final design is manufacturable and logically accurate. This includes the process of Design Rule Checking(DRC) and Layout Versus Schematic(LVS) analysis to later signoff and send the finalized GDS on the shuttle. 
 
 
 ## DRC
