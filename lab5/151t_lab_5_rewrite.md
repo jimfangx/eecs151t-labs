@@ -808,7 +808,8 @@ Optimizes the design post routing with the exact measurements for the wires to c
 As mentioned before, filler cells are essential to the manufacturability to prevent DRC errors and power stability across the chip through adding decoupling capacitors. This step places all filler cells to fill in gaps of the design and add decoupling capacitors to certain areas of the chip for power stability. 
 
 <details>
-<summary>Here is the TCL that places Layer Fill for your reference:</summary>
+<summary>Here is the TCL for your reference:</summary>
+
     1   set_db add_fillers_cells "FILL_DECAP8 FILL_DECAP16 FILL1 FILL2 FILL4 FILL8 FILL16"
     2   add_fillers -base_cells "FILL_DECAP16" -area "263 3415 3341 4936" -density 0.1
     3   add_fillers -base_cells "FILL_DECAP16" -area "1512 300 3318 3500" -density 0.15
@@ -818,12 +819,12 @@ As mentioned before, filler cells are essential to the manufacturability to prev
     7   add_fillers -base_cells "FILL_DECAP16" -area "743 3090 1189 3394"
     8   add_fillers -base_cells "FILL_DECAP16" -area "62 300 3541 600" -density 0.15
     9   add_fillers -base_cells "FILL_DECAP16" -area "2818 660 3480 5033" -density 0.15
-   10   add_fillers -base_cells "FILL_DECAP16" -area "62 4372 2500 5082" -density 0.15
-   11   add_fillers -base_cells "FILL_DECAP16" -area "62 3380 772 4261" -density 0.15
-   12   set_db add_fillers_cells "FILL1 FILL2 FILL4 FILL8 FILL16"
-   13   add_fillers
-<details>
+    10   add_fillers -base_cells "FILL_DECAP16" -area "62 4372 2500 5082" -density 0.15
+    11   add_fillers -base_cells "FILL_DECAP16" -area "62 3380 772 4261" -density 0.15
+    12   set_db add_fillers_cells "FILL1 FILL2 FILL4 FILL8 FILL16"
+    13   add_fillers
 
+</details>
 
 ### 15. GDS Stream Out
 The final design is exported in a GDS(or GDSII) file format which is a graphical representation of the chip with all the standard cells, wires, vias, etc stacked on top of each other on different metal and via layers as seen on the stackup. This is the file that is distributed to the foundry to be manufactured as it acts as the blue print of the chip. While receiving the GDS may seem like the end of physical design, it is necessary to undergo more stages of physical verification to be certain that the final design is manufacturable and logically accurate. This includes the process of Design Rule Checking(DRC) and Layout Versus Schematic(LVS) analysis to later signoff and send the finalized GDS on the shuttle. 
